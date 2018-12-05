@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module>
+	<name>
+		Сбербанк Эквайринг v1.3
+	</name>
+	<settings>
+		<variable>sbr_login</variable>
+		<name>Логин API</name>
+	</settings>
+	<settings>
+		<variable>sbr_password</variable>
+		<name>Пароль</name>
+	</settings>
+    <settings>
+        <variable>sbr_mode</variable>
+        <name>Режим оплаты</name>
+        <options>
+            <name>Тестовый режим</name>
+            <value>1</value>
+        </options>
+        <options>
+            <name>Рабочий сервер</name>
+            <value>0</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>sbr_debug</variable>
+        <name>Показывать информацию об отладке в тестовом режиме (видно для админа)</name>
+        <options>
+            <name>нет</name>
+            <value>0</value>
+        </options>
+        <options>
+            <name>да</name>
+            <value>1</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>sbr_orderBundle</variable>
+        <name>Передавать данные для печати чека (товары заказа для 54-ФЗ)</name>
+        <options>
+            <name>да</name>
+            <value>1</value>
+        </options>
+        <options>
+            <name>нет</name>
+            <value>0</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>sbr_taxSystem</variable>
+        <name>Система налогообложения</name>
+        <options>
+            <name>общая</name>
+            <value>0</value>
+        </options>
+        <options>
+            <name>упрощённая, доход</name>
+            <value>1</value>
+        </options>
+        <options>
+            <name>упрощённая, доход минус расход</name>
+            <value>2</value>
+        </options>
+        <options>
+            <name>единый налог на вменённый доход</name>
+            <value>3</value>
+        </options>
+        <options>
+            <name>единый сельскохозяйственный налог</name>
+            <value>4</value>
+        </options>
+        <options>
+            <name>патентная система налогообложения</name>
+            <value>5</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>sbr_taxType</variable>
+        <name>Ставка НДС</name>
+        <options>
+            <name>без НДС</name>
+            <value>0</value>
+        </options>
+        <options>
+            <name>НДС по ставке 0%</name>
+            <value>1</value>
+        </options>
+        <options>
+            <name>НДС чека по ставке 10%</name>
+            <value>2</value>
+        </options>
+        <options>
+            <name>НДС чека по ставке 18%</name>
+            <value>3</value>
+        </options>
+        <options>
+            <name>НДС чека по расчетной ставке 10/110</name>
+            <value>4</value>
+        </options>
+        <options>
+            <name>НДС чека по расчетной ставке 18/118</name>
+            <value>5</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>sbr_taxProduct</variable>
+        <name>Разный НДС у товаров? (инструкция по установке /payments/Sberbank/taxType_install/инструкция.txt)</name>
+        <options>
+            <name>Нет</name>
+            <value>0</value>
+        </options>
+        <options>
+            <name>Да</name>
+            <value>1</value>
+        </options>
+    </settings>
+</module>

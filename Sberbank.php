@@ -1,0 +1,298 @@
+<?php
+
+require_once 'api/Simpla.php';
+require_once 'RBS.php';
+
+class Sberbank extends Simpla
+{
+    private $payment_method = [],
+        $order = [];
+
+    public function checkout_form($order_id, $button_text = null)
+    {
+        if (empty($button_text)) {
+            $button_text = 'Перейти к оплате';
+        }
+
+        $this->order = $this->orders->get_order((int)$order_id);
+        $this->payment_method = $this->payment->get_payment_method($this->order->payment_method_id);
+
+        $sber_session = $_SESSION['order'][$this->order->id];
+        $payment_currency = $this->money->get_currency(intval($this->payment_method->currency_id));
+        $settings = $this->payment->get_payment_settings($this->payment_method->id);
+        $return_url = $this->config->root_url . "/payment/Sberbank/callback.php?order=" . $this->order->id;
+        $order_description = 'Оплата заказа №' . $this->order->id . ' на сайте ' . $this->settings->site_name;
+        $order_description = (string)mb_substr($order_description, 0, 99);
+
+
+        /**
+         * Подключаемся к эквайрингу
+         */
+        $rbs = new RBS($settings['sbr_login'], $settings['sbr_password'], FALSE, $settings['sbr_mode'] ? TRUE : FALSE);
+
+
+        /**
+         * Подготавливаем корзину для 54-ФЗ
+         */
+        $orderBundle = [];
+        if ($settings['sbr_orderBundle']) {
+
+            // Вычисляем общую скидку
+
+            $orderBundle['customerDetails'] = [
+                "email" => $this->order->email,
+                "phone" => preg_replace('/[^0-9]/', '', $this->order->phone)
+            ];
+
+            // Добавляем товары в чек
+            $purchases = $this->normalize($this->orders->get_purchases(['order_id' => $this->order->id]));
+            foreach ($purchases as $key => $purchase) {
+                $orderBundle['cartItems']['items'][] = [
+                    "positionId" => $key + 1,
+                    "name" => $purchase->product_name,
+                    "quantity" => [
+                        "value" => $purchase->amount,
+                        "measure" => $this->settings->units
+                    ],
+                    "itemAmount" => $purchase->price * $purchase->amount,
+                    "itemCode" => $purchase->variant_id,
+                    "tax" => [
+                        "taxType" => isset($purchase->taxType) ? $purchase->taxType : $settings['sbr_taxType']
+                    ],
+                    "itemPrice" => $purchase->price
+                ];
+            }
+
+            // Добавляем доставку в чек
+            if ($this->order->delivery_id && $this->order->delivery_price > 0 && !$this->order->separate_delivery) {
+                $delivery = $this->delivery->get_delivery($this->order->delivery_id);
+                $orderBundle['cartItems']['items'][] = [
+                    "positionId" => count($orderBundle['cartItems']['items']) + 1,
+                    "name" => $delivery->name,
+                    "quantity" => [
+                        "value" => 1,
+                        "measure" => 'шт'
+                    ],
+                    "itemAmount" => $this->convert_price($this->order->delivery_price),
+                    "itemCode" => 'DELIVERY-' . $delivery->id,
+                    "tax" => [
+                        "taxType" => $settings['sbr_taxType']
+                    ],
+                    "itemPrice" => $this->convert_price($this->order->delivery_price)
+                ];
+            }
+
+            $orderBundle = json_encode($orderBundle);
+        }
+
+
+        /**
+         * Может мы пытались перерегестрировать заказ?
+         */
+        if (isset($sber_session['order_prefix'])) {
+            if ($sber_session['order_prefix'] < strtotime(date('Y-m-d H:i:s', strtotime('-20 min')))) {
+                $order_id_store = $this->order->id;
+                unset($_SESSION['order'][$this->order->id]);
+                unset($sber_session);
+            } else {
+                $order_id_store = $this->order->id . '-' . $sber_session['order_prefix'];
+            }
+        } else {
+            $order_id_store = $this->order->id;
+        }
+
+        // Узнаем статус заказа у Сбербанка
+        $order_status = $rbs->get_order_status_by_orderNumber($order_id_store);
+
+        // TODO: Debug mode
+        if ($settings['sbr_debug'] == 1 AND $_SESSION['admin']) {
+            print '<pre>';
+            echo '<h1>Текущий заказ:</h1>';
+            var_dump($this->order);
+            echo '<h1>Сумма заказа для Сбера:</h1>';
+            var_dump($this->convert_price($this->order->total_price));
+            echo '<h1>Заказ в сессии:</h1>';
+            var_dump($_SESSION['order']);
+            echo '<h1>ID заказа:</h1>';
+            var_dump($order_id_store);
+            echo '<h1>Статус заказа от сбера:</h1>';
+            var_dump($order_status);
+            echo '<h1>Корзина для ФЗ-54:</h1>';
+            var_dump(json_decode($orderBundle));
+            print '</pre>';
+        }
+
+        /**
+         * Истек срок ожидания ввода данных (заказ делали больше 20 минут назад)
+         * поступила команда пересоздать заказ
+         */
+        if ($this->request->post('reorder', 'integer') == 1) {
+
+            $order_prefix = strtotime(date('Y/m/d H:i:s'));
+
+            // Регестрируем заказ с новым ID заказа (ID + order_prefix)
+            $response = $rbs->register_order(
+                $this->order->id . '-' . $order_prefix,
+                $this->convert_price($this->order->total_price),
+                $return_url,
+                $order_description,
+                $orderBundle,
+                $settings['sbr_taxSystem']
+            );
+
+            // Запомним новый номер заказа.
+            $_SESSION['order'][$this->order->id] = [
+                'orderId' => $response['orderId'],
+                'formUrl' => $response['formUrl'],
+                'order_prefix' => $order_prefix
+            ];
+
+            header('Location: ' . $response['formUrl']);
+        }
+
+        /**
+         * Создаем новый заказ в ПШ
+         */
+        if (!isset($order_status['actionCode'])) {
+
+            // Заказ небыл создан, создаем.
+            $response = $rbs->register_order(
+                $this->order->id,
+                $this->convert_price($this->order->total_price),
+                $return_url,
+                $order_description,
+                $orderBundle,
+                $settings['sbr_taxSystem']
+            );
+
+            if (!$response['errorCode']) {
+                // Запомним новый номер заказа.
+                $_SESSION['order'][$this->order->id] = [
+                    'orderId' => $response['orderId'],
+                    'formUrl' => $response['formUrl']
+                ];
+                return "<a href='" . $response['formUrl'] . "' class='checkout_button'>" . $button_text . ' </a>';
+            } elseif ($response == NULL) {
+                return 'Невозможно подключиться к платежному шлюзу';
+            } else {
+                return $response['errorMessage'];
+            }
+
+        } elseif (isset($order_status['actionCode']) AND $order_status['actionCode'] != 0) {
+
+            // Заказ был создан, но не небыл оплачен, можно продолжить оплату
+            // или нет префикса для продолжения заказа
+            if (!isset($sber_session['formUrl']) OR $order_status['actionCode'] != '-100') {
+
+                // Запрос отмены старого заказа
+                $reverse_order_id = isset($sber_session['order_prefix']) ? $this->order->id . '-' . $sber_session['order_prefix'] : $this->order->id;
+                $response_old_order = $rbs->reverse_order($reverse_order_id);
+                // unset($_SESSION['order'][$this->order->id]);
+
+                $button = '<p>Заказ небыл оплачен.</p>' .
+                    '<p>' . $order_status['actionCodeDescription'] . '</p>' .
+                    '<form action="' . $this->config->root_url . '/order/' . $this->order->url . '" method=POST>' .
+                    '<input type=hidden name=reorder value="1">' .
+                    '<input type=submit class=checkout_button value="Повторить оплату">' .
+                    '</form>';
+
+            } else {
+                $button = '<p>Заказ небыл оплачен.</p>' .
+                    '<p>' . $order_status['actionCodeDescription'] . '</p>' .
+                    "<a href='" . $_SESSION['order'][$this->order->id]['formUrl'] . "' class='checkout_button'>" . $button_text . ' </a>';
+            }
+
+            return $button;
+
+        } else {
+            // Заказ был оплачен
+            return '<p>Заказ был оплачен.</p>';
+        }
+    }
+
+
+    /**
+     * Конвертируем цену из 100.00 в 10000 для Платежного Шлюза
+     * @param $price
+     * @return integer
+     */
+    private function convert_price($price)
+    {
+        // return $this->money->convert($price, $this->payment_method->currency_id, false) * 100;
+        return $result = round($price, 2) * 100;
+    }
+
+
+    /**
+     * Подгоняет стоимость товаров в чеке, кроме доставки, к общей цене заказа
+     * @param object $purchases товары в заказе
+     * @return object $purchases
+     */
+    private function normalize($purchases)
+    {
+        // Если есть доставка, отнимаем стоимость доставки от общей суммы заказа
+        $total_price = $this->order->total_price;
+        if ($this->order->delivery_price && $this->order->delivery_price > 0 && !$this->order->separate_delivery) {
+            $total_price -= $this->order->delivery_price;
+        }
+
+        // Добавляем стоимость скидки
+        $total_price += $this->order->coupon_discount;
+
+        // Общее количество товаров в заказе
+        /*
+        $total_products = 0;
+        foreach ($purchases as $item) {
+            $total_products += $item->amount;
+        }*/
+
+        /**
+         * discount - процент скидки покупателя
+         */
+        if ($this->order->discount) {
+            foreach ($purchases as $item) {
+                $item->price *= (100 - $this->order->discount) / 100;
+            }
+        }
+
+        /**
+         * coupon_discount - скидка по купону
+         */
+        if (!empty($this->order->coupon_discount)) {
+            foreach ($purchases as $item) {
+                // Вычислим процентное соотношение item price * amount от общей суммы заказа
+                $coefficient = round(($item->amount * $item->price) * 100 / $total_price, 2);
+                $coefficient_discount = round((($this->order->coupon_discount) * $coefficient) / 100, 2);
+                $item->price -= $coefficient_discount / $item->amount;
+            }
+        }
+
+        foreach ($purchases as $item) {
+            $item->price = $this->convert_price($item->price);
+        }
+
+        /**
+         * Кастомный НДС
+         * для каждого товара
+         */
+        if ($this->payment_method->sbr_taxProduct) {
+            $products_ids = [];
+            foreach ($purchases as $item) {
+                $products_ids[] = $item->product_id;
+            }
+            $products = [];
+            foreach ($this->products->get_products(['id' => $products_ids]) as $product) {
+                $products[$product->id] = $product;
+            }
+            foreach ($purchases as $item) {
+                if (isset($products[$item->product_id]->taxType)) {
+                    $item->taxType = $products[$item->product_id]->taxType;
+                }
+            }
+        }
+
+        return $purchases;
+    }
+}
+ 
+ 
