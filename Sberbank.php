@@ -66,8 +66,7 @@ class Sberbank extends Simpla
                     "itemPrice" => $purchase->price
                 ];
 
-                /*
-                    TODO: ФФД 1.05
+                /* TODO: ФФД 1.05
                  * if ($this->payment_settings['sbr_ffd_105']) {
                     $orderBundle['cartItems']['items'][$key]['itemAttributes'] = [
                         'paymentMethod' => $this->payment_settings['sbr_paymentMethod'] ? $this->payment_settings['sbr_paymentMethod'] : 1,
