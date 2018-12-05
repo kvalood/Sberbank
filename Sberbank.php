@@ -6,7 +6,9 @@ require_once 'RBS.php';
 class Sberbank extends Simpla
 {
     private $payment_method = [],
-        $order = [];
+        $order = [],
+        $payment_settings = [],
+        $debug = 0;
 
     public function checkout_form($order_id, $button_text = null)
     {
@@ -16,10 +18,12 @@ class Sberbank extends Simpla
 
         $this->order = $this->orders->get_order((int)$order_id);
         $this->payment_method = $this->payment->get_payment_method($this->order->payment_method_id);
+        $this->payment_settings = $this->payment->get_payment_settings($this->payment_method->id);
+
+        // Debug mode
+        $this->payment_settings['sbr_debug'] == 1 AND $_SESSION['admin'] ? $this->debug = 1 : $this->debug = 0;
 
         $sber_session = $_SESSION['order'][$this->order->id];
-        $payment_currency = $this->money->get_currency(intval($this->payment_method->currency_id));
-        $settings = $this->payment->get_payment_settings($this->payment_method->id);
         $return_url = $this->config->root_url . "/payment/Sberbank/callback.php?order=" . $this->order->id;
         $order_description = 'Оплата заказа №' . $this->order->id . ' на сайте ' . $this->settings->site_name;
         $order_description = (string)mb_substr($order_description, 0, 99);
@@ -28,14 +32,14 @@ class Sberbank extends Simpla
         /**
          * Подключаемся к эквайрингу
          */
-        $rbs = new RBS($settings['sbr_login'], $settings['sbr_password'], FALSE, $settings['sbr_mode'] ? TRUE : FALSE);
+        $rbs = new RBS($this->payment_settings['sbr_login'], $this->payment_settings['sbr_password'], FALSE, $this->payment_settings['sbr_mode'] ? TRUE : FALSE);
 
 
         /**
          * Подготавливаем корзину для 54-ФЗ
          */
         $orderBundle = [];
-        if ($settings['sbr_orderBundle']) {
+        if ($this->payment_settings['sbr_orderBundle']) {
 
             // Вычисляем общую скидку
 
@@ -47,7 +51,7 @@ class Sberbank extends Simpla
             // Добавляем товары в чек
             $purchases = $this->normalize($this->orders->get_purchases(['order_id' => $this->order->id]));
             foreach ($purchases as $key => $purchase) {
-                $orderBundle['cartItems']['items'][] = [
+                $orderBundle['cartItems']['items'][$key] = [
                     "positionId" => $key + 1,
                     "name" => $purchase->product_name,
                     "quantity" => [
@@ -57,16 +61,25 @@ class Sberbank extends Simpla
                     "itemAmount" => $purchase->price * $purchase->amount,
                     "itemCode" => $purchase->variant_id,
                     "tax" => [
-                        "taxType" => isset($purchase->taxType) ? $purchase->taxType : $settings['sbr_taxType']
+                        "taxType" => isset($purchase->taxType) ? $purchase->taxType : $this->payment_settings['sbr_taxType']
                     ],
                     "itemPrice" => $purchase->price
                 ];
+
+                /* TODO: ФФД 1.05
+                 * if ($this->payment_settings['sbr_ffd_105']) {
+                    $orderBundle['cartItems']['items'][$key]['itemAttributes'] = [
+                        'paymentMethod' => $this->payment_settings['sbr_paymentMethod'] ? $this->payment_settings['sbr_paymentMethod'] : 1,
+                        'paymentObject' => $this->payment_settings['sbr_paymentObject'] ? $this->payment_settings['sbr_paymentObject'] : 1
+                    ];
+                }*/
             }
 
             // Добавляем доставку в чек
             if ($this->order->delivery_id && $this->order->delivery_price > 0 && !$this->order->separate_delivery) {
                 $delivery = $this->delivery->get_delivery($this->order->delivery_id);
-                $orderBundle['cartItems']['items'][] = [
+                $key = count($orderBundle['cartItems']['items']);
+                $orderBundle['cartItems']['items'][$key] = [
                     "positionId" => count($orderBundle['cartItems']['items']) + 1,
                     "name" => $delivery->name,
                     "quantity" => [
@@ -76,10 +89,18 @@ class Sberbank extends Simpla
                     "itemAmount" => $this->convert_price($this->order->delivery_price),
                     "itemCode" => 'DELIVERY-' . $delivery->id,
                     "tax" => [
-                        "taxType" => $settings['sbr_taxType']
+                        "taxType" => $this->payment_settings['sbr_taxType']
                     ],
                     "itemPrice" => $this->convert_price($this->order->delivery_price)
                 ];
+
+                /* TODO: ФФД 1.05
+                 * if ($this->payment_settings['sbr_ffd_105']) {
+                    $orderBundle['cartItems']['items'][$key]['itemAttributes'] = [
+                        'paymentMethod' => $this->payment_settings['sbr_paymentMethod'] ? $this->payment_settings['sbr_paymentMethod'] : 1,
+                        'paymentObject' => $this->payment_settings['sbr_paymentObject'] ? $this->payment_settings['sbr_paymentObject'] : 1
+                    ];
+                }*/
             }
 
             $orderBundle = json_encode($orderBundle);
@@ -104,8 +125,7 @@ class Sberbank extends Simpla
         // Узнаем статус заказа у Сбербанка
         $order_status = $rbs->get_order_status_by_orderNumber($order_id_store);
 
-        // TODO: Debug mode
-        if ($settings['sbr_debug'] == 1 AND $_SESSION['admin']) {
+        if ($this->debug) {
             print '<pre>';
             echo '<h1>Текущий заказ:</h1>';
             var_dump($this->order);
@@ -137,7 +157,7 @@ class Sberbank extends Simpla
                 $return_url,
                 $order_description,
                 $orderBundle,
-                $settings['sbr_taxSystem']
+                $this->payment_settings['sbr_taxSystem']
             );
 
             // Запомним новый номер заказа.
@@ -162,7 +182,7 @@ class Sberbank extends Simpla
                 $return_url,
                 $order_description,
                 $orderBundle,
-                $settings['sbr_taxSystem']
+                $this->payment_settings['sbr_taxSystem']
             );
 
             if (!$response['errorCode']) {
@@ -230,8 +250,12 @@ class Sberbank extends Simpla
      */
     private function normalize($purchases)
     {
-        // Если есть доставка, отнимаем стоимость доставки от общей суммы заказа
+        $final_purchases = [];
+
+        // Общая стоимость заказа (с учетом процентной скидки)
         $total_price = $this->order->total_price;
+
+        // Если есть доставка, отнимаем стоимость доставки от общей суммы заказа
         if ($this->order->delivery_price && $this->order->delivery_price > 0 && !$this->order->separate_delivery) {
             $total_price -= $this->order->delivery_price;
         }
@@ -239,21 +263,15 @@ class Sberbank extends Simpla
         // Добавляем стоимость скидки
         $total_price += $this->order->coupon_discount;
 
-        // Общее количество товаров в заказе
-        /*
-        $total_products = 0;
-        foreach ($purchases as $item) {
-            $total_products += $item->amount;
-        }*/
-
         /**
          * discount - процент скидки покупателя
+         * TODO: Remove ?
          */
-        if ($this->order->discount) {
-            foreach ($purchases as $item) {
-                $item->price *= (100 - $this->order->discount) / 100;
-            }
-        }
+        /* if ($this->order->discount) {
+             foreach ($purchases as $item) {
+                 $item->price *= (100 - $this->order->discount) / 100;
+             }
+         }*/
 
         /**
          * coupon_discount - скидка по купону
@@ -267,8 +285,88 @@ class Sberbank extends Simpla
             }
         }
 
+        /**
+         * Подгоняем цены у товаров
+         */
+        $positions = [];
+        foreach ($purchases as $item) {
+
+            $p_discount = round($item->price * (100 - $this->order->discount) / 100, 2); // Цена товара в позиции со скидкой
+            $p_all_discount = $p_discount * $item->amount;
+            $p_all_no_discount = round($item->amount * $item->price, 2); // Цена всех товаров в позиции без скидки
+            $p_all_discount_all = round($p_all_no_discount * (100 - $this->order->discount) / 100, 2); // Цена всех товаров в позиции со скидкой
+            $difference = round($p_all_discount - $p_all_discount_all, 2); // Разница
+
+            if ($this->order->discount) {
+                $item->price *= (100 - $this->order->discount) / 100;
+            }
+
+            if ($this->debug) {
+                echo 'Общая цена позиций со скидкой: ' . $p_all_discount . '<br>';
+                echo 'Общая $p_all_discount_all: ' . $p_all_discount_all . '<br>';
+            }
+
+            /*
+             * Если есть разница, создаем клон товара в позиции
+             * и из его стоимости вычитаем разницу в товарах.
+             * Таким образом будет 2 позиции с одним товаром,
+             * но разными стоимостями.
+             */
+            if ($p_all_discount > $p_all_discount_all) {
+                // Разница БОЛЬШЕ - Вычитаем из одного товара разницу
+
+                if ($this->debug) {
+                    echo 'Разница БОЛЬШЕ: ' . $difference . '<br>';
+                }
+
+                $item_1 = clone $item;
+                $item_1->price = round($item_1->price, 2) - $difference;
+                $item_1->amount = 1;
+                $item_1->variant_id = $item_1->variant_id . '-1';
+                $positions[] = $item_1;
+
+                $item->amount -= 1;
+                $positions[] = $item;
+
+            } elseif ($p_all_discount < $p_all_discount_all) {
+                // Прибавляем к одному товару разницу
+
+                if ($this->debug) {
+                    echo 'Разница МЕНЬШЕ: ' . $difference . '<br>';
+                }
+
+                $item_1 = clone $item;
+                $item_1->price = round($item_1->price, 2) - $difference;
+                $item_1->amount = 1;
+                $item_1->variant_id = $item_1->variant_id . '-1';
+                $positions[] = $item_1;
+
+                $item->amount -= 1;
+                $positions[] = $item;
+            } else {
+
+                if ($this->debug) {
+                    echo 'Разница НЕТ: ' . $difference . '<br>';
+                }
+                $positions[] = $item;
+            }
+        }
+
+        if ($this->debug) {
+            print '<pre>';
+            var_dump($positions);
+            print '</pre>';
+        }
+
+
+        $purchases = $positions;
+
+        /*
+         * Формируем цены для сбера
+         */
         foreach ($purchases as $item) {
             $item->price = $this->convert_price($item->price);
+            print_r($item->product_name . ' - ' . $item->price . '<br>');
         }
 
         /**

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module>
 	<name>
-		Сбербанк Эквайринг v1.3
+		Сбербанк Эквайринг v1.4
 	</name>
 	<settings>
 		<variable>sbr_login</variable>
@@ -21,18 +21,6 @@
         <options>
             <name>Рабочий сервер</name>
             <value>0</value>
-        </options>
-    </settings>
-    <settings>
-        <variable>sbr_debug</variable>
-        <name>Показывать информацию об отладке в тестовом режиме (видно для админа)</name>
-        <options>
-            <name>нет</name>
-            <value>0</value>
-        </options>
-        <options>
-            <name>да</name>
-            <value>1</value>
         </options>
     </settings>
     <settings>
@@ -112,6 +100,119 @@
         </options>
         <options>
             <name>Да</name>
+            <value>1</value>
+        </options>
+    </settings>
+
+    <settings>
+        <variable>sbr_ffd_105</variable>
+        <name>(ФФД 1.05) включить? Так-же нужно включить в Кассе и Сбербанк-админке</name>
+        <options>
+            <name>Нет</name>
+            <value>0</value>
+        </options>
+        <options>
+            <name>Да</name>
+            <value>1</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>sbr_paymentMethod</variable>
+        <name>(ФФД 1.05) Тип оплаты</name>
+        <options>
+            <name>полная предварительная оплата до момента передачи предмета расчёта</name>
+            <value>1</value>
+        </options>
+        <options>
+            <name>частичная предварительная оплата до момента передачи предмета расчёта</name>
+            <value>2</value>
+        </options>
+        <options>
+            <name>аванс</name>
+            <value>3</value>
+        </options>
+        <options>
+            <name>полная оплата в момент передачи предмета расчёта</name>
+            <value>4</value>
+        </options>
+        <options>
+            <name>частичная оплата предмета расчёта в момент его передачи с последующей оплатой в кредит</name>
+            <value>5</value>
+        </options>
+        <options>
+            <name>передача предмета расчёта без его оплаты в момент его передачи с последующей оплатой в кредит</name>
+            <value>6</value>
+        </options>
+        <options>
+            <name>оплата предмета расчёта после его передачи с оплатой в кредит</name>
+            <value>7</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>sbr_paymentObject</variable>
+        <name>(ФФД 1.05) Тип оплачиваемой позиции</name>
+        <options>
+            <name>товар</name>
+            <value>1</value>
+        </options>
+        <options>
+            <name>подакцизный товар</name>
+            <value>2</value>
+        </options>
+        <options>
+            <name>работа</name>
+            <value>3</value>
+        </options>
+        <options>
+            <name>услуга</name>
+            <value>4</value>
+        </options>
+        <options>
+            <name>ставка азартной игры</name>
+            <value>5</value>
+        </options>
+        <options>
+            <name>выигрыш азартной игры</name>
+            <value>6</value>
+        </options>
+        <options>
+            <name>лотерейный билет</name>
+            <value>7</value>
+        </options>
+        <options>
+            <name>выигрыш лотереи</name>
+            <value>8</value>
+        </options>
+        <options>
+            <name>предоставление РИД</name>
+            <value>9</value>
+        </options>
+        <options>
+            <name>платёж</name>
+            <value>10</value>
+        </options>
+        <options>
+            <name>агентское вознаграждение</name>
+            <value>11</value>
+        </options>
+        <options>
+            <name>составной предмет расчёта</name>
+            <value>12</value>
+        </options>
+        <options>
+            <name>иной предмет расчёта</name>
+            <value>13</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>sbr_debug</variable>
+        <name>Показывать информацию об отладке в тестовом режиме (видно для админа)</name>
+        <options>
+            <name>нет</name>
+            <value>0</value>
+        </options>
+        <options>
+            <name>да</name>
             <value>1</value>
         </options>
     </settings>
