@@ -41,8 +41,7 @@ class Sberbank extends Simpla
         $orderBundle = [];
         if ($this->payment_settings['sbr_orderBundle']) {
 
-            // Вычисляем общую скидку
-
+            // Информация о пользователе
             $orderBundle['customerDetails'] = [
                 "email" => $this->order->email,
                 "phone" => preg_replace('/[^0-9]/', '', $this->order->phone)
@@ -65,14 +64,6 @@ class Sberbank extends Simpla
                     ],
                     "itemPrice" => $purchase->price
                 ];
-
-                /* TODO: ФФД 1.05
-                 * if ($this->payment_settings['sbr_ffd_105']) {
-                    $orderBundle['cartItems']['items'][$key]['itemAttributes'] = [
-                        'paymentMethod' => $this->payment_settings['sbr_paymentMethod'] ? $this->payment_settings['sbr_paymentMethod'] : 1,
-                        'paymentObject' => $this->payment_settings['sbr_paymentObject'] ? $this->payment_settings['sbr_paymentObject'] : 1
-                    ];
-                }*/
             }
 
             // Добавляем доставку в чек
@@ -93,14 +84,14 @@ class Sberbank extends Simpla
                     ],
                     "itemPrice" => $this->convert_price($this->order->delivery_price)
                 ];
+            }
 
-                /* TODO: ФФД 1.05
-                 * if ($this->payment_settings['sbr_ffd_105']) {
-                    $orderBundle['cartItems']['items'][$key]['itemAttributes'] = [
-                        'paymentMethod' => $this->payment_settings['sbr_paymentMethod'] ? $this->payment_settings['sbr_paymentMethod'] : 1,
-                        'paymentObject' => $this->payment_settings['sbr_paymentObject'] ? $this->payment_settings['sbr_paymentObject'] : 1
-                    ];
-                }*/
+            // ФФД 1.05
+            if ($this->payment_settings['sbr_ffd_105']) {
+                $orderBundle['itemAttributes'] = [
+                    'paymentMethod' => $this->payment_settings['sbr_paymentMethod'] ? $this->payment_settings['sbr_paymentMethod'] : 1,
+                    'paymentObject' => $this->payment_settings['sbr_paymentObject'] ? $this->payment_settings['sbr_paymentObject'] : 1
+                ];
             }
 
             $orderBundle = json_encode($orderBundle);
@@ -286,7 +277,7 @@ class Sberbank extends Simpla
         }
 
         /**
-         * Подгоняем цены у товаров
+         * Подгоняем цены у товаров с учетом процентной скидки
          */
         $positions = [];
         foreach ($purchases as $item) {
@@ -366,7 +357,6 @@ class Sberbank extends Simpla
          */
         foreach ($purchases as $item) {
             $item->price = $this->convert_price($item->price);
-            print_r($item->product_name . ' - ' . $item->price . '<br>');
         }
 
         /**
@@ -392,5 +382,3 @@ class Sberbank extends Simpla
         return $purchases;
     }
 }
- 
- 
