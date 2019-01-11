@@ -62,36 +62,47 @@ class Sberbank extends Simpla
                     "tax" => [
                         "taxType" => isset($purchase->taxType) ? $purchase->taxType : $this->payment_settings['sbr_taxType']
                     ],
-                    "itemPrice" => $purchase->price
+                    "itemPrice" => $purchase->price,
+
+                    // ФФД 1.05
+                    "itemAttributes" => [
+                        'attributes' => [
+                            [
+                                'name' => 'paymentMethod',
+                                'value' => $this->payment_settings['sbr_paymentMethod']
+                            ],
+                            [
+                                'name' => 'paymentObject',
+                                'value' => $this->payment_settings['sbr_paymentObject']
+                            ]
+                        ]
+                    ]
                 ];
             }
 
-            // Добавляем доставку в чек
+            // Доставка
             if ($this->order->delivery_id && $this->order->delivery_price > 0 && !$this->order->separate_delivery) {
                 $delivery = $this->delivery->get_delivery($this->order->delivery_id);
-                $key = count($orderBundle['cartItems']['items']);
-                $orderBundle['cartItems']['items'][$key] = [
-                    "positionId" => count($orderBundle['cartItems']['items']) + 1,
-                    "name" => $delivery->name,
-                    "quantity" => [
-                        "value" => 1,
-                        "measure" => 'шт'
-                    ],
-                    "itemAmount" => $this->convert_price($this->order->delivery_price),
-                    "itemCode" => 'DELIVERY-' . $delivery->id,
-                    "tax" => [
-                        "taxType" => $this->payment_settings['sbr_taxType']
-                    ],
-                    "itemPrice" => $this->convert_price($this->order->delivery_price)
-                ];
-            }
 
-            // ФФД 1.05
-            if ($this->payment_settings['sbr_ffd_105']) {
-                $orderBundle['itemAttributes'] = [
-                    'paymentMethod' => $this->payment_settings['sbr_paymentMethod'] ? $this->payment_settings['sbr_paymentMethod'] : 1,
-                    'paymentObject' => $this->payment_settings['sbr_paymentObject'] ? $this->payment_settings['sbr_paymentObject'] : 1
-                ];
+                // Добавляем доставку в чек
+                if($this->payment_settings['sbr_delivery'] == 'item') {
+
+                    $key = count($orderBundle['cartItems']['items']);
+                    $orderBundle['cartItems']['items'][$key] = [
+                        "positionId" => count($orderBundle['cartItems']['items']) + 1,
+                        "name" => $delivery->name,
+                        "quantity" => [
+                            "value" => 1,
+                            "measure" => 'шт'
+                        ],
+                        "itemAmount" => $this->convert_price($this->order->delivery_price),
+                        "itemCode" => 'DELIVERY-' . $delivery->id,
+                        "tax" => [
+                            "taxType" => $this->payment_settings['sbr_taxType']
+                        ],
+                        "itemPrice" => $this->convert_price($this->order->delivery_price)
+                    ];
+                }
             }
 
             $orderBundle = json_encode($orderBundle);
@@ -254,15 +265,19 @@ class Sberbank extends Simpla
         // Добавляем стоимость скидки
         $total_price += $this->order->coupon_discount;
 
-        /**
-         * discount - процент скидки покупателя
-         * TODO: Remove ?
+        // Беру товары
+        // добавляю в процентном соотношении стоимость доставки
+        /*
+         * DELIVERY
+         * Добавляем доставку в каждый товар
          */
-        /* if ($this->order->discount) {
-             foreach ($purchases as $item) {
-                 $item->price *= (100 - $this->order->discount) / 100;
-             }
-         }*/
+        if($this->payment_settings['sbr_delivery'] == 'include_item') {
+            foreach ($purchases as $item) {
+                $coefficient = round(($item->amount * $item->price) * 100 / $total_price, 2);
+                $coefficient_delivery = round((($this->order->delivery_price) * $coefficient) / 100, 2);
+                $item->price += $coefficient_delivery / $item->amount;
+            }
+        }
 
         /**
          * coupon_discount - скидка по купону

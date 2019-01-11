@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module>
 	<name>
-		Сбербанк Эквайринг v1.4
+		Сбербанк Эквайринг v1.5
 	</name>
 	<settings>
 		<variable>sbr_login</variable>
@@ -25,7 +25,7 @@
     </settings>
     <settings>
         <variable>sbr_orderBundle</variable>
-        <name>Передавать данные для печати чека (товары заказа для 54-ФЗ)</name>
+        <name>Передавать данные для печати чека (товары заказа для 54-ФЗ) Так-же нужно включить ФФД 1.05 в Кассе и Сбербанк-админке</name>
         <options>
             <name>да</name>
             <value>1</value>
@@ -33,6 +33,18 @@
         <options>
             <name>нет</name>
             <value>0</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>sbr_delivery</variable>
+        <name>Включить доставку</name>
+        <options>
+            <name>в стоимость товаров</name>
+            <value>include_item</value>
+        </options>
+        <options>
+            <name>как отдельную позицию в чеке</name>
+            <value>item</value>
         </options>
     </settings>
     <settings>
@@ -90,23 +102,18 @@
             <name>НДС чека по расчетной ставке 18/118</name>
             <value>5</value>
         </options>
+        <options>
+            <name>НДС чека по ставке 20%</name>
+            <value>6</value>
+        </options>
+        <options>
+            <name>НДС чека по расчётной ставке 20/120</name>
+            <value>7</value>
+        </options>
     </settings>
     <settings>
         <variable>sbr_taxProduct</variable>
         <name>Разный НДС у товаров? (инструкция по установке /payments/Sberbank/taxType_install/инструкция.txt)</name>
-        <options>
-            <name>Нет</name>
-            <value>0</value>
-        </options>
-        <options>
-            <name>Да</name>
-            <value>1</value>
-        </options>
-    </settings>
-
-    <settings>
-        <variable>sbr_ffd_105</variable>
-        <name>(ФФД 1.05) включить? Так-же нужно включить в Кассе и Сбербанк-админке</name>
         <options>
             <name>Нет</name>
             <value>0</value>

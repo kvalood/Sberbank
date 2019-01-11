@@ -12,6 +12,8 @@
     	<option value='3' {if $product->taxType=='3'}selected{/if}>НДС чека по ставке 18%</option>
     	<option value='4' {if $product->taxType=='4'}selected{/if}>НДС чека по расчетной ставке 10/110</option>
     	<option value='5' {if $product->taxType=='5'}selected{/if}>НДС чека по расчетной ставке 18/118</option>
+    	<option value='6' {if $product->taxType=='6'}selected{/if}>НДС чека по ставке 20%</option>
+    	<option value='7' {if $product->taxType=='5'}selected{/if}>НДС чека по расчётной ставке 20/120</option>
     </select>
 
 7) Открываем /simpla/ProductAdmin.php
