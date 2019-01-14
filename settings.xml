@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module>
 	<name>
-		Сбербанк Эквайринг v1.5
+		Сбербанк Эквайринг v1.5.1
 	</name>
 	<settings>
 		<variable>sbr_login</variable>
@@ -25,7 +25,7 @@
     </settings>
     <settings>
         <variable>sbr_orderBundle</variable>
-        <name>Передавать данные для печати чека (товары заказа для 54-ФЗ) Так-же нужно включить ФФД 1.05 в Кассе и Сбербанк-админке</name>
+        <name>Передавать данные для печати чека (54-ФЗ)</name>
         <options>
             <name>да</name>
             <value>1</value>
@@ -113,7 +113,7 @@
     </settings>
     <settings>
         <variable>sbr_taxProduct</variable>
-        <name>Разный НДС у товаров? (инструкция по установке /payments/Sberbank/taxType_install/инструкция.txt)</name>
+        <name>Разный НДС у товаров? (инструкция см. README.md)</name>
         <options>
             <name>Нет</name>
             <value>0</value>
@@ -213,7 +213,7 @@
     </settings>
     <settings>
         <variable>sbr_debug</variable>
-        <name>Показывать информацию об отладке в тестовом режиме (видно для админа)</name>
+        <name>Информация об отладке (видно админу)</name>
         <options>
             <name>нет</name>
             <value>0</value>
