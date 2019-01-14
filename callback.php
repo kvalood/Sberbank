@@ -48,19 +48,20 @@ if ($order->paid) {
 
 // Проверяем оплаченный заказ
 $total_price = round($order->total_price, 2) * 100;
-if ($response['amount'] != (int) $total_price || $response['amount'] <= 0) {
+if ($response['amount'] != (int)$total_price || $response['amount'] <= 0) {
     die("incorrect price");
 }
 
-// Установим статус оплачен
-$simpla->orders->update_order(intval($order->id), ['paid' => 1]);
+// Установим статус "оплачен"
+$simpla->orders->update_order(intval($order->id), ['paid' => 1, 'payment_date' => date('Y-m-d H:i:s')]);
+// $simpla->orders->pay(intval($order->id)); // Должно быть так, но не работает
+
+// Спишем товары
+$simpla->orders->close(intval($order->id));
 
 // Отправим уведомление на email
 $simpla->notify->email_order_user(intval($order->id));
 $simpla->notify->email_order_admin(intval($order->id));
-
-// Спишем товары  
-$simpla->orders->close(intval($order->id));
 
 header('Location: ' . $simpla->config->root_url . '/order/' . $order->url);
 

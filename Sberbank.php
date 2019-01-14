@@ -85,7 +85,7 @@ class Sberbank extends Simpla
                 $delivery = $this->delivery->get_delivery($this->order->delivery_id);
 
                 // Добавляем доставку в чек
-                if($this->payment_settings['sbr_delivery'] == 'item') {
+                if ($this->payment_settings['sbr_delivery'] == 'item') {
 
                     $key = count($orderBundle['cartItems']['items']);
                     $orderBundle['cartItems']['items'][$key] = [
@@ -265,13 +265,11 @@ class Sberbank extends Simpla
         // Добавляем стоимость скидки
         $total_price += $this->order->coupon_discount;
 
-        // Беру товары
-        // добавляю в процентном соотношении стоимость доставки
         /*
          * DELIVERY
          * Добавляем доставку в каждый товар
          */
-        if($this->payment_settings['sbr_delivery'] == 'include_item') {
+        if ($this->payment_settings['sbr_delivery'] == 'include_item') {
             foreach ($purchases as $item) {
                 $coefficient = round(($item->amount * $item->price) * 100 / $total_price, 2);
                 $coefficient_delivery = round((($this->order->delivery_price) * $coefficient) / 100, 2);
