@@ -30,7 +30,7 @@
 5. Ищем в этих функциях `p.visible,` и после добавляем `p.taxType,`
 6. Открываем файл `/simpla/design/html/product.tpl`, ищем `Параметры страницы`
 7. Добавляем в этот блок:
-    ```
+    ```html
     <select name="taxType">
     	<option value='0' {if $product->taxType=='0'}selected{/if}>без НДС</option>
     	<option value='1' {if $product->taxType=='1'}selected{/if}>НДС по ставке 0%</option>
