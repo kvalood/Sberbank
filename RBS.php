@@ -182,6 +182,38 @@ class RBS
 
 
     /**
+     * Запрос сведений о кассовом чеке по НОМЕРУ ЗАКАЗА В МАГАЗИНЕ
+     *
+     * Метод getReceiptStatus.do
+     *
+     * @param string $order_number номер заказа в магазине
+     * @return string[]
+     */
+    public function get_receipt_status_by_orderNumber($order_number)
+    {
+        $data = ['orderNumber' => $order_number];
+        $response = $this->gateway('getReceiptStatus.do', $data);
+        return $response;
+    }
+
+
+    /**
+     * Запрос сведений о кассовом чеке по НОМЕРУ ЗАКАЗА В МЕРЧАНТЕ
+     *
+     * Метод getReceiptStatus.do
+     *
+     * @param string $order_id номер заказа в мерчанте
+     * @return string[]
+     */
+    public function get_receipt_status_by_orderId($order_id)
+    {
+        $data = ['orderId' => $order_id];
+        $response = $this->gateway('getReceiptStatus.do', $data);
+        return $response;
+    }
+
+
+    /**
      * MDORDER ИЗ FORMURL
      *
      * @param string $url адрес платежной страницы

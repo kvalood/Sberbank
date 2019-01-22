@@ -7,10 +7,8 @@ require_once('payment/Sberbank/RBS.php');
 
 $simpla = new Simpla();
 
-$order_id = $simpla->request->get('order');
-$prefix = explode('-', $order_id);
-
 $order = $simpla->orders->get_order(intval($simpla->request->get('order', 'integer')));
+
 if (empty($order)) {
     die('Оплачиваемый заказ не найден');
 }
@@ -27,9 +25,8 @@ $payment_currency = $simpla->money->get_currency(intval($method->currency_id));
  * Проверим статус заказа
  */
 $rbs = new RBS($settings['sbr_login'], $settings['sbr_password'], FALSE, $settings['sbr_mode'] ? TRUE : FALSE);
-$order_merchant_id = $simpla->request->get('orderId');
-
-$response = $rbs->get_order_status_by_orderId($order_merchant_id);
+$order_id_merchant = $simpla->request->get('orderId', 'string');
+$response = $rbs->get_order_status_by_orderId($order_id_merchant);
 
 // Если указана ошибка оплаты
 if ($response['errorCode']) {
@@ -52,8 +49,18 @@ if ($response['amount'] != (int)$total_price || $response['amount'] <= 0) {
     die("incorrect price");
 }
 
+// Получим данные о чеке
+$payment_details = $rbs->get_receipt_status_by_orderId($order_id_merchant);
+
 // Установим статус "оплачен"
-$simpla->orders->update_order(intval($order->id), ['paid' => 1, 'payment_date' => date('Y-m-d H:i:s')]);
+$simpla->orders->update_order(intval($order->id), [
+    'paid' => 1,
+    'payment_date' => date('Y-m-d H:i:s'),
+    'payment_details' => json_encode([
+        'orderId' => $payment_details['orderId'], // Номер заказа в Платежном Шлюзе
+        'uuid' => $payment_details['receipt'][0]['uuid'], // Номер чека
+    ])
+]);
 // $simpla->orders->pay(intval($order->id)); // Должно быть так, но не работает
 
 // Спишем товары

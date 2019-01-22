@@ -376,7 +376,7 @@ class Sberbank extends Simpla
          * Кастомный НДС
          * для каждого товара
          */
-        if ($this->payment_method->sbr_taxProduct) {
+        if ($this->payment_settings['sbr_taxProduct']) {
             $products_ids = [];
             foreach ($purchases as $item) {
                 $products_ids[] = $item->product_id;
