@@ -32,7 +32,7 @@ class Sberbank extends Simpla
         /**
          * Подключаемся к эквайрингу
          */
-        $rbs = new RBS($this->payment_settings['sbr_login'], $this->payment_settings['sbr_password'], FALSE, $this->payment_settings['sbr_mode'] ? TRUE : FALSE);
+        $rbs = new RBS($this->payment_settings['sbr_login'], $this->payment_settings['sbr_password'], $this->payment_settings['two_stage'] ? TRUE : FALSE, $this->payment_settings['sbr_mode'] ? TRUE : FALSE);
 
 
         /**

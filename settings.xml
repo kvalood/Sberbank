@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module>
 	<name>
-		Сбербанк Эквайринг v1.5.2
+		Сбербанк Эквайринг v1.5.3
 	</name>
 	<settings>
 		<variable>sbr_login</variable>
@@ -13,7 +13,7 @@
 	</settings>
     <settings>
         <variable>sbr_mode</variable>
-        <name>Режим оплаты</name>
+        <name>Режим работы</name>
         <options>
             <name>Тестовый режим</name>
             <value>1</value>
@@ -21,6 +21,18 @@
         <options>
             <name>Рабочий сервер</name>
             <value>0</value>
+        </options>
+    </settings>
+    <settings>
+        <variable>two_stage</variable>
+        <name>Режим оплаты</name>
+        <options>
+            <name>Одностадийная оплата</name>
+            <value>0</value>
+        </options>
+        <options>
+            <name>Двухстадийная оплата</name>
+            <value>1</value>
         </options>
     </settings>
     <settings>
@@ -37,7 +49,7 @@
     </settings>
     <settings>
         <variable>sbr_delivery</variable>
-        <name>Включить доставку</name>
+        <name>Стоимость доставки включить</name>
         <options>
             <name>в стоимость товаров</name>
             <value>include_item</value>

@@ -24,7 +24,7 @@ $payment_currency = $simpla->money->get_currency(intval($method->currency_id));
 /**
  * Проверим статус заказа
  */
-$rbs = new RBS($settings['sbr_login'], $settings['sbr_password'], FALSE, $settings['sbr_mode'] ? TRUE : FALSE);
+$rbs = new RBS($settings['sbr_login'], $settings['sbr_password'], $settings['two_stage'] ? TRUE : FALSE, $settings['sbr_mode'] ? TRUE : FALSE);
 $order_id_merchant = $simpla->request->get('orderId', 'string');
 $response = $rbs->get_order_status_by_orderId($order_id_merchant);
 
