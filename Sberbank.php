@@ -20,14 +20,17 @@ class Sberbank extends Simpla
         $this->payment_method = $this->payment->get_payment_method($this->order->payment_method_id);
         $this->payment_settings = $this->payment->get_payment_settings($this->payment_method->id);
 
+        // Получаем payment_details отдельно, т.к. в get_order он не берется.
+        $this->db->query($this->db->placehold("SELECT payment_details FROM __orders WHERE id=? LIMIT 1", $this->order->id));
+        $payment_details = $this->db->result();
+        $this->order->payment_details = json_decode($payment_details->payment_details, TRUE);
+
         // Debug mode
         $this->payment_settings['sbr_debug'] == 1 AND $_SESSION['admin'] ? $this->debug = 1 : $this->debug = 0;
 
-        $sber_session = $_SESSION['order'][$this->order->id];
         $return_url = $this->config->root_url . "/payment/Sberbank/callback.php?order=" . $this->order->id;
         $order_description = 'Оплата заказа №' . $this->order->id . ' на сайте ' . $this->settings->site_name;
         $order_description = (string)mb_substr($order_description, 0, 99);
-
 
         /**
          * Подключаемся к эквайрингу
@@ -80,180 +83,139 @@ class Sberbank extends Simpla
                 ];
             }
 
-            // Доставка
-            if ($this->order->delivery_id && $this->order->delivery_price > 0 && !$this->order->separate_delivery) {
+            // Добавляем доставку в чек
+            if ($this->payment_settings['sbr_delivery'] == 'item' AND $this->order->delivery_id AND $this->order->delivery_price > 0 AND !$this->order->separate_delivery) {
+
                 $delivery = $this->delivery->get_delivery($this->order->delivery_id);
 
-                // Добавляем доставку в чек
-                if ($this->payment_settings['sbr_delivery'] == 'item') {
+                $key = count($orderBundle['cartItems']['items']);
+                $orderBundle['cartItems']['items'][$key] = [
+                    "positionId" => count($orderBundle['cartItems']['items']) + 1,
+                    "name" => $delivery->name,
+                    "quantity" => [
+                        "value" => 1,
+                        "measure" => 'шт'
+                    ],
+                    "itemAmount" => $this->convert_price($this->order->delivery_price),
+                    "itemCode" => 'DELIVERY-' . $delivery->id,
+                    "tax" => [
+                        "taxType" => $this->payment_settings['sbr_taxType']
+                    ],
+                    "itemPrice" => $this->convert_price($this->order->delivery_price),
 
-                    $key = count($orderBundle['cartItems']['items']);
-                    $orderBundle['cartItems']['items'][$key] = [
-                        "positionId" => count($orderBundle['cartItems']['items']) + 1,
-                        "name" => $delivery->name,
-                        "quantity" => [
-                            "value" => 1,
-                            "measure" => 'шт'
-                        ],
-                        "itemAmount" => $this->convert_price($this->order->delivery_price),
-                        "itemCode" => 'DELIVERY-' . $delivery->id,
-                        "tax" => [
-                            "taxType" => $this->payment_settings['sbr_taxType']
-                        ],
-                        "itemPrice" => $this->convert_price($this->order->delivery_price)
-                    ];
-                }
+                    // ФФД 1.05
+                    "itemAttributes" => [
+                        'attributes' => [
+                            [
+                                'name' => 'paymentMethod',
+                                'value' => $this->payment_settings['sbr_paymentMethod']
+                            ],
+                            [
+                                'name' => 'paymentObject',
+                                'value' => 4
+                            ]
+                        ]
+                    ]
+                ];
             }
 
             $orderBundle = json_encode($orderBundle);
         }
 
 
-        /**
-         * Может мы пытались перерегестрировать заказ?
-         */
-        if (isset($sber_session['order_prefix'])) {
-            if ($sber_session['order_prefix'] < strtotime(date('Y-m-d H:i:s', strtotime('-20 min')))) {
-                $order_id_store = $this->order->id;
-                unset($_SESSION['order'][$this->order->id]);
-                unset($sber_session);
-            } else {
-                $order_id_store = $this->order->id . '-' . $sber_session['order_prefix'];
-            }
+        // Узнаем статус заказа в ПШ
+        if (isset($this->order->payment_details['orderId'])) {
+            $order_status = $rbs->get_order_status_by_orderId($this->order->payment_details['orderId']);
         } else {
-            $order_id_store = $this->order->id;
+            $order_status = $rbs->get_order_status_by_orderNumber($this->order->id);
         }
 
-        // Узнаем статус заказа у Сбербанка
-        $order_status = $rbs->get_order_status_by_orderNumber($order_id_store);
+        // Истекло время заказа в ПШ?
+        $order_expiration = strtotime($this->order->payment_details['expirationDate']) > strtotime('now') ? true : false;
+
+
+        /**
+         * Заказ существует, не оплачен, можно оплатить
+         */
+        $result = '';
+        if (isset($order_status['actionCode']) AND $rbs->allowed_actionCode($order_status['actionCode']) AND $order_expiration) {
+            $result = "<a href='" . $this->order->payment_details['formUrl'] . "' class='checkout_button'>" . $button_text . ' </a>';
+        } elseif ($order_status['errorCode']==6 OR !isset($order_status['actionCode']) OR !$rbs->allowed_actionCode($order_status['actionCode'])) {
+
+            /**
+             * Заказ не создавался ИЛИ вернули плохой код, пересоздаем
+             */
+            $order_prefix = (isset($order_status['actionCode']) AND !$rbs->allowed_actionCode($order_status['actionCode'])) ? '-' . strtotime(date('Y/m/d H:i:s')) : '';
+
+            /**
+             * Создаем новый заказ в ПШ
+             */
+            // Дата истечения оплаты через 20 дней
+            //$datetime = new DateTime(date("Y-m-d H:i:s", strtotime("+1 minutes")));
+            $datetime = new DateTime(date("Y-m-d H:i:s", strtotime("+20 days")));
+            $this->order->payment_details['expirationDate'] = $datetime->format(DateTime::ATOM);
+
+            // Заказ не был создан, создаем.
+            $response = $rbs->register_order(
+                $this->order->id . $order_prefix,
+                $this->convert_price($this->order->total_price),
+                $return_url,
+                $order_description,
+                $orderBundle,
+                [
+                    'expirationDate' => $this->order->payment_details['expirationDate'],
+                    'taxSystem' => $this->payment_settings['sbr_taxSystem']
+                ]
+            );
+
+            if (!$response['errorCode']) {
+
+                $this->order->payment_details['orderId'] = $response['orderId'];
+                $this->order->payment_details['formUrl'] = $response['formUrl'];
+                $this->order->payment_details['orderNumber'] = $response['orderNumber'];
+
+                // Обновим payment_details в заказе
+                $this->orders->update_order($this->order->id, ['payment_details' => json_encode($this->order->payment_details)]);
+
+                $result = "<a href='" . $this->order->payment_details['formUrl'] . "' class='checkout_button'>" . $button_text . ' </a>';
+            } elseif ($response == NULL) {
+                $result = '<p class="checkout_info">Невозможно подключиться к платежному шлюзу</p>';
+            } else {
+                $result = '<p class="checkout_info">' . $response['errorMessage'] . '</p>';
+            }
+
+        } elseif ($order_status['actionCode'] == '0') {
+            // Заказ был оплачен
+            $result = '<p class="checkout_info">Заказ был оплачен.</p>';
+        } else {
+            $result = '<p class="checkout_info">' . $order_status['actionCode'] . '</p>';
+        }
+
 
         if ($this->debug) {
             print '<pre>';
-            echo '<h1>Текущий заказ:</h1>';
-            var_dump($this->order);
-            echo '<h1>Сумма заказа для Сбера:</h1>';
-            var_dump($this->convert_price($this->order->total_price));
-            echo '<h1>Заказ в сессии:</h1>';
-            var_dump($_SESSION['order']);
-            echo '<h1>ID заказа:</h1>';
-            var_dump($order_id_store);
-            echo '<h1>Статус заказа от сбера:</h1>';
+            echo '<h3>Статус заказа от сбера:</h3>';
             var_dump($order_status);
-            echo '<h1>Корзина для ФЗ-54:</h1>';
+            echo '<h3>Текущий заказ в БД:</h3>';
+            var_dump($this->order);
+            echo '<h3>Сумма заказа для Сбера:</h3>';
+            var_dump($this->convert_price($this->order->total_price));
+            echo '<h3>Корзина для ФЗ-54:</h3>';
             var_dump(json_decode($orderBundle));
             print '</pre>';
         }
 
-        /**
-         * Истек срок ожидания ввода данных (заказ делали больше 20 минут назад)
-         * поступила команда пересоздать заказ
-         */
-        if ($this->request->post('reorder', 'integer') == 1) {
-
-            $order_prefix = strtotime(date('Y/m/d H:i:s'));
-
-            // Регестрируем заказ с новым ID заказа (ID + order_prefix)
-            $response = $rbs->register_order(
-                $this->order->id . '-' . $order_prefix,
-                $this->convert_price($this->order->total_price),
-                $return_url,
-                $order_description,
-                $orderBundle,
-                $this->payment_settings['sbr_taxSystem']
-            );
-
-            // Запомним новый номер заказа.
-            $_SESSION['order'][$this->order->id] = [
-                'orderId' => $response['orderId'],
-                'formUrl' => $response['formUrl'],
-                'order_prefix' => $order_prefix
-            ];
-
-            header('Location: ' . $response['formUrl']);
-        }
-
-        /**
-         * Создаем новый заказ в ПШ
-         */
-        if (!isset($order_status['actionCode'])) {
-
-            // Заказ небыл создан, создаем.
-            $response = $rbs->register_order(
-                $this->order->id,
-                $this->convert_price($this->order->total_price),
-                $return_url,
-                $order_description,
-                $orderBundle,
-                $this->payment_settings['sbr_taxSystem']
-            );
-
-            if (!$response['errorCode']) {
-                // Запомним новый номер заказа.
-                $_SESSION['order'][$this->order->id] = [
-                    'orderId' => $response['orderId'],
-                    'formUrl' => $response['formUrl']
-                ];
-                return "<a href='" . $response['formUrl'] . "' class='checkout_button'>" . $button_text . ' </a>';
-            } elseif ($response == NULL) {
-                return 'Невозможно подключиться к платежному шлюзу';
-            } else {
-                return $response['errorMessage'];
-            }
-
-        } elseif (isset($order_status['actionCode']) AND $order_status['actionCode'] != 0) {
-
-            // Заказ был создан, но не небыл оплачен, можно продолжить оплату
-            // или нет префикса для продолжения заказа
-            if (!isset($sber_session['formUrl']) OR $order_status['actionCode'] != '-100') {
-
-                // Запрос отмены старого заказа
-                $reverse_order_id = isset($sber_session['order_prefix']) ? $this->order->id . '-' . $sber_session['order_prefix'] : $this->order->id;
-                $response_old_order = $rbs->reverse_order($reverse_order_id);
-                // unset($_SESSION['order'][$this->order->id]);
-
-                $button = '<p>Заказ небыл оплачен.</p>' .
-                    '<p>' . $order_status['actionCodeDescription'] . '</p>' .
-                    '<form action="' . $this->config->root_url . '/order/' . $this->order->url . '" method=POST>' .
-                    '<input type=hidden name=reorder value="1">' .
-                    '<input type=submit class=checkout_button value="Повторить оплату">' .
-                    '</form>';
-
-            } else {
-                $button = '<p>Заказ небыл оплачен.</p>' .
-                    '<p>' . $order_status['actionCodeDescription'] . '</p>' .
-                    "<a href='" . $_SESSION['order'][$this->order->id]['formUrl'] . "' class='checkout_button'>" . $button_text . ' </a>';
-            }
-
-            return $button;
-
-        } else {
-            // Заказ был оплачен
-            return '<p>Заказ был оплачен.</p>';
-        }
+        return $result;
     }
-
-
-    /**
-     * Конвертируем цену из 100.00 в 10000 для Платежного Шлюза
-     * @param $price
-     * @return integer
-     */
-    private function convert_price($price)
-    {
-        // return $this->money->convert($price, $this->payment_method->currency_id, false) * 100;
-        return $result = round($price, 2) * 100;
-    }
-
 
     /**
      * Подгоняет стоимость товаров в чеке, кроме доставки, к общей цене заказа
+     *
      * @param object $purchases товары в заказе
      * @return object $purchases
      */
     private function normalize($purchases)
     {
-        $final_purchases = [];
-
         // Общая стоимость заказа (с учетом процентной скидки)
         $total_price = $this->order->total_price;
 
@@ -269,7 +231,7 @@ class Sberbank extends Simpla
          * DELIVERY
          * Добавляем доставку в каждый товар
          */
-        if ($this->payment_settings['sbr_delivery'] == 'include_item') {
+        if ($this->payment_settings['sbr_delivery'] == 'include_item' AND !$this->order->separate_delivery) {
             foreach ($purchases as $item) {
                 $coefficient = round(($item->amount * $item->price) * 100 / $total_price, 2);
                 $coefficient_delivery = round((($this->order->delivery_price) * $coefficient) / 100, 2);
@@ -356,12 +318,6 @@ class Sberbank extends Simpla
             }
         }
 
-        if ($this->debug) {
-            print '<pre>';
-            var_dump($positions);
-            print '</pre>';
-        }
-
 
         $purchases = $positions;
 
@@ -393,5 +349,17 @@ class Sberbank extends Simpla
         }
 
         return $purchases;
+    }
+
+    /**
+     * Конвертируем цену из 100.00 в 10000 для Платежного Шлюза
+     *
+     * @param $price
+     * @return integer
+     */
+    private function convert_price($price)
+    {
+        // return $this->money->convert($price, $this->payment_method->currency_id, false) * 100;
+        return $result = round($price, 2) * 100;
     }
 }

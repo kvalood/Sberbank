@@ -109,23 +109,29 @@ class RBS
      * @param string $return_url страница, на которую необходимо вернуть пользователя если платеж прошел успешно
      * @param string $order_description Описание заказа
      * @param array $order_bundle Корзина товаров заказа
+     * @param array $params Список доп. параметров (expirationDate, taxSystem)
      * @param integer $taxSystem Система налогообложения
      * @return string[]
      */
-    function register_order($order_number, $amount, $return_url, $order_description, $order_bundle, $taxSystem = false)
+    function register_order($order_number, $amount, $return_url, $order_description, $order_bundle, $params = [])
     {
         $data = [
             'orderNumber' => $order_number,
             'amount' => $amount,
             'returnUrl' => $return_url,
             'description' => $order_description,
-            'orderBundle' => $order_bundle,
-            //'sessionTimeoutSecs' => 60
+            'orderBundle' => $order_bundle
         ];
 
-        if ($taxSystem !== false) {
-            $data['taxSystem'] = $taxSystem;
+        // Запишем доп. параметры
+        if (!empty($params)) {
+            foreach ($params as $param_name => $val) {
+                if($val !== false) {
+                    $data[$param_name] = $val;
+                }
+            }
         }
+
         if ($this->two_stage) {
             $method = 'registerPreAuth.do';
         } else {
@@ -224,6 +230,32 @@ class RBS
         $parse = parse_url($url);
         $mdOrder = explode('=', $parse['query']);
         return $mdOrder[1];
+    }
+
+
+    /**
+     * СПИСОК РАЗРЕШЕННЫХ КОДОВ
+     *
+     * Коды, при которых можно продолжить оплату заказа в ПШ
+     *
+     * @param $actionCode
+     * @return bool
+     */
+    public function allowed_actionCode($actionCode) {
+
+        $allowed_actionCode = [
+            '-100', // Не было попыток оплаты.
+            // '-102', // Платеж отменен платежным агентом.
+            '0', // Платеж успешно прошел.
+            // '-2007' // Истек срок ожидания ввода данных.
+        ];
+
+        if (in_array($actionCode, $allowed_actionCode)) {
+            return true;
+        } else {
+            return false;
+        }
+
     }
 
 }
