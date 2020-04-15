@@ -234,8 +234,20 @@ class Sberbank extends Simpla
         if ($this->payment_settings['sbr_delivery'] == 'include_item' AND !$this->order->separate_delivery) {
             foreach ($purchases as $item) {
                 $coefficient = round(($item->amount * $item->price) * 100 / $total_price, 2);
-                $coefficient_delivery = round((($this->order->delivery_price) * $coefficient) / 100, 2);
+                $coefficient_delivery = round(($this->order->delivery_price * $coefficient) / 100, 2);
+
+                if ($this->debug) {
+                    echo '$item->price: ' . $item->price . '<br>';
+                }
+
                 $item->price += $coefficient_delivery / $item->amount;
+
+                if ($this->debug) {
+                    echo '$coefficient: ' . $coefficient . '<br>';
+                    echo '$coefficient_delivery: ' . $coefficient_delivery . '<br>';
+                    echo '$item->price: ' . $item->price . '<br>';
+                    echo '-------<br>';
+                }
             }
         }
 
@@ -320,6 +332,30 @@ class Sberbank extends Simpla
 
 
         $purchases = $positions;
+
+        /*
+         * Смотрим финальную разницу, если она есть, добавляем к последней позиции разницу.
+         */
+        $all_sum = 0;
+        $all_sum_diff = 0;
+        foreach ($purchases as $item) {
+            $all_sum += $item->price;
+        }
+        if ($this->order->total_price > $all_sum) {
+            $all_sum_diff = $this->order->total_price - $all_sum;
+            $all_sum_diff = round($all_sum_diff, 2);
+
+            // or `array_key_last` if php 7 >= 7.3.0
+            end($purchases);
+            $last_key = key($purchases);
+            $purchases[$last_key]->price += $all_sum_diff;
+
+            if($this->debug) {
+                echo '<h3>Корректировка сумы заказа</h3>';
+                echo 'Сумма всех позиций (считая по отдельности):' . $all_sum . '<br/>';
+                echo 'Отличие от суммы заказа:' . $all_sum_diff . '<br/>';
+            }
+        }
 
         /*
          * Формируем цены для сбера
