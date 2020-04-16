@@ -341,7 +341,8 @@ class Sberbank extends Simpla
         foreach ($purchases as $item) {
             $all_sum += $item->price;
         }
-        if ($this->order->total_price > $all_sum) {
+
+        if ($this->order->total_price != $all_sum) {
             $all_sum_diff = $this->order->total_price - $all_sum;
             $all_sum_diff = round($all_sum_diff, 2);
 
@@ -352,7 +353,8 @@ class Sberbank extends Simpla
 
             if($this->debug) {
                 echo '<h3>Корректировка сумы заказа</h3>';
-                echo 'Сумма всех позиций (считая по отдельности):' . $all_sum . '<br/>';
+                echo '$this->order->total_price: ' . $this->order->total_price . '<br/>';
+                echo '$all_sum: ' . $all_sum . '<br/>';
                 echo 'Отличие от суммы заказа:' . $all_sum_diff . '<br/>';
             }
         }
