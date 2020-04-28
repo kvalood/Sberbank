@@ -245,11 +245,6 @@ class Sberbank extends Simpla
             $corrected_purchases[$key] = $item->price;
         }
 
-        if ($this->debug) {
-            echo '$total_price: ' . $total_price . '<br>';
-            echo '$items_total_price: ' . $items_total_price . '<br><br>';
-        }
-
         /**
          * размазываем discount на все товары
          * discount - процентная скидка
@@ -259,21 +254,10 @@ class Sberbank extends Simpla
             // объем процентной скидки - вычитаю процент скидки / пользовательской скидки
             $discount_sum = ($items_total_price * $this->order->discount) / 100;
 
-            if ($this->debug) {
-                echo '$discount_sum: ' . $discount_sum . '<br>';
-            }
-
             foreach ($purchases as $key => $item) {
                 $coefficient = ($item->amount * $item->price) * 100 / $items_total_price;
                 $coefficient_discount = round((($discount_sum * $coefficient) / 100) / $item->amount, 2);
                 $corrected_purchases[$key] -= $coefficient_discount;
-
-                if ($this->debug) {
-                    echo '---Процентная----<br>';
-                    echo '$coefficient: ' . $coefficient . '<br>';
-                    echo '$coefficient_discount: ' . $coefficient_discount . '<br>';
-                    echo 'corrected price: ' . $corrected_purchases[$key] . '<br><br>';
-                }
             }
         }
 
@@ -287,13 +271,6 @@ class Sberbank extends Simpla
                 $coefficient = ($item->amount * $item->price) * 100 / $items_total_price;
                 $coefficient_discount = round((($this->order->coupon_discount) * $coefficient) / 100 / $item->amount, 2);
                 $corrected_purchases[$key] -= $coefficient_discount;
-
-                if ($this->debug) {
-                    echo '---ФИКСИРОВАННАЯ----<br>';
-                    echo '$coefficient: ' . $coefficient . '<br>';
-                    echo '$coefficient_discount: ' . $coefficient_discount . '<br>';
-                    echo 'corrected price: ' . $corrected_purchases[$key] . '<br><br>';
-                }
             }
         }
 
@@ -307,13 +284,6 @@ class Sberbank extends Simpla
                 $coefficient = ($item->amount * $item->price) * 100 / $items_total_price;
                 $coefficient_delivery = round(($this->order->delivery_price * $coefficient) / 100 / $item->amount, 2);
                 $corrected_purchases[$key] += $coefficient_delivery;
-
-                if ($this->debug) {
-                    echo '----Доставка---<br>';
-                    echo '$coefficient: ' . $coefficient . '<br>';
-                    echo '$coefficient_delivery: ' . $coefficient_delivery . '<br>';
-                    echo 'corrected price: ' . $corrected_purchases[$key] . '<br><br>';
-                }
             }
         }
 
