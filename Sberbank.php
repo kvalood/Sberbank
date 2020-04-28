@@ -61,7 +61,7 @@ class Sberbank extends Simpla
                         "measure" => $this->settings->units
                     ],
                     "itemAmount" => $purchase->price * $purchase->amount,
-                    "itemCode" => $purchase->variant_id,
+                    "itemCode" => $purchase->variant_id . '-'. $key,
                     "tax" => [
                         "taxType" => isset($purchase->taxType) ? $purchase->taxType : $this->payment_settings['sbr_taxType']
                     ],
@@ -123,6 +123,16 @@ class Sberbank extends Simpla
         }
 
 
+        /**
+         * узнаем hash заказа
+         * на случай если в заказе что-то менялось, а урл на оплату еже сгенерирован и есть в payment_details
+         */
+        $order_token_text = $this->order->id . $this->order->delivery_price . $this->order->total_price . $this->order->separate_delivery . $this->order->coupon_discount . $this->order->discount;
+        $order_token = false; // Совпадают ли хеши?
+        if (isset($this->order->payment_details['order_token']) AND $this->config->check_token($order_token_text, $this->order->payment_details['order_token'])) {
+            $order_token = true;
+        }
+
         // Узнаем статус заказа в ПШ
         if (isset($this->order->payment_details['orderId'])) {
             $order_status = $rbs->get_order_status_by_orderId($this->order->payment_details['orderId']);
@@ -138,14 +148,14 @@ class Sberbank extends Simpla
          * Заказ существует, не оплачен, можно оплатить
          */
         $result = '';
-        if (isset($order_status['actionCode']) AND $rbs->allowed_actionCode($order_status['actionCode']) AND $order_expiration) {
+        if ($order_token AND isset($order_status['actionCode']) AND $rbs->allowed_actionCode($order_status['actionCode']) AND $order_expiration) {
             $result = "<a href='" . $this->order->payment_details['formUrl'] . "' class='checkout_button'>" . $button_text . ' </a>';
-        } elseif ($order_status['errorCode']==6 OR !isset($order_status['actionCode']) OR !$rbs->allowed_actionCode($order_status['actionCode'])) {
+        } elseif (!$order_token OR $order_status['errorCode']==6 OR !isset($order_status['actionCode']) OR !$rbs->allowed_actionCode($order_status['actionCode'])) {
 
             /**
              * Заказ не создавался ИЛИ вернули плохой код, пересоздаем
              */
-            $order_prefix = (isset($order_status['actionCode']) AND !$rbs->allowed_actionCode($order_status['actionCode'])) ? '-' . strtotime(date('Y/m/d H:i:s')) : '';
+            $order_prefix = (!$order_token OR (isset($order_status['actionCode']) AND !$rbs->allowed_actionCode($order_status['actionCode']))) ? '-' . strtotime(date('Y/m/d H:i:s')) : '';
 
             /**
              * Создаем новый заказ в ПШ
@@ -173,6 +183,7 @@ class Sberbank extends Simpla
                 $this->order->payment_details['orderId'] = $response['orderId'];
                 $this->order->payment_details['formUrl'] = $response['formUrl'];
                 $this->order->payment_details['orderNumber'] = $response['orderNumber'];
+                $this->order->payment_details['order_token'] = $this->config->token($order_token_text);
 
                 // Обновим payment_details в заказе
                 $this->orders->update_order($this->order->id, ['payment_details' => json_encode($this->order->payment_details)]);
@@ -196,10 +207,10 @@ class Sberbank extends Simpla
             print '<pre>';
             echo '<h3>Статус заказа от сбера:</h3>';
             var_dump($order_status);
-            echo '<h3>Текущий заказ в БД:</h3>';
-            var_dump($this->order);
             echo '<h3>Сумма заказа для Сбера:</h3>';
             var_dump($this->convert_price($this->order->total_price));
+            echo '<h3>Текущий заказ в БД:</h3>';
+            var_dump($this->order);
             echo '<h3>Корзина для ФЗ-54:</h3>';
             var_dump(json_decode($orderBundle));
             print '</pre>';
@@ -224,122 +235,97 @@ class Sberbank extends Simpla
             $total_price -= $this->order->delivery_price;
         }
 
-        // Добавляем стоимость скидки
+        // Добавляем стоимость скидки coupon_discount
         $total_price += $this->order->coupon_discount;
+
+        $items_total_price = 0; // Общая стоимость позиций по отдельности.
+        $corrected_purchases = []; // Корректирующий массив цен
+        foreach ($purchases as $key => $item) {
+            $items_total_price += $item->price * $item->amount;
+            $corrected_purchases[$key] = $item->price;
+        }
+
+        if ($this->debug) {
+            echo '$total_price: ' . $total_price . '<br>';
+            echo '$items_total_price: ' . $items_total_price . '<br><br>';
+        }
+
+        /**
+         * размазываем discount на все товары
+         * discount - процентная скидка
+         */
+        if ($this->order->discount > 0) {
+
+            // объем процентной скидки - вычитаю процент скидки / пользовательской скидки
+            $discount_sum = ($items_total_price * $this->order->discount) / 100;
+
+            if ($this->debug) {
+                echo '$discount_sum: ' . $discount_sum . '<br>';
+            }
+
+            foreach ($purchases as $key => $item) {
+                $coefficient = ($item->amount * $item->price) * 100 / $items_total_price;
+                $coefficient_discount = round((($discount_sum * $coefficient) / 100) / $item->amount, 2);
+                $corrected_purchases[$key] -= $coefficient_discount;
+
+                if ($this->debug) {
+                    echo '---Процентная----<br>';
+                    echo '$coefficient: ' . $coefficient . '<br>';
+                    echo '$coefficient_discount: ' . $coefficient_discount . '<br>';
+                    echo 'corrected price: ' . $corrected_purchases[$key] . '<br><br>';
+                }
+            }
+        }
+
+        /**
+         * размазываем coupon_discount на все товары
+         * coupon_discount - скидка по купону
+         */
+        if ($this->order->coupon_discount > 0) {
+            foreach ($purchases as $key => $item) {
+                // Вычислим процентное соотношение item price * amount от общей суммы заказа
+                $coefficient = ($item->amount * $item->price) * 100 / $items_total_price;
+                $coefficient_discount = round((($this->order->coupon_discount) * $coefficient) / 100 / $item->amount, 2);
+                $corrected_purchases[$key] -= $coefficient_discount;
+
+                if ($this->debug) {
+                    echo '---ФИКСИРОВАННАЯ----<br>';
+                    echo '$coefficient: ' . $coefficient . '<br>';
+                    echo '$coefficient_discount: ' . $coefficient_discount . '<br>';
+                    echo 'corrected price: ' . $corrected_purchases[$key] . '<br><br>';
+                }
+            }
+        }
+
 
         /*
          * DELIVERY
          * Добавляем доставку в каждый товар
-         */
+        */
         if ($this->payment_settings['sbr_delivery'] == 'include_item' AND !$this->order->separate_delivery) {
-            foreach ($purchases as $item) {
-                $coefficient = round(($item->amount * $item->price) * 100 / $total_price, 2);
-                $coefficient_delivery = round(($this->order->delivery_price * $coefficient) / 100, 2);
+            foreach ($purchases as $key => $item) {
+                $coefficient = ($item->amount * $item->price) * 100 / $items_total_price;
+                $coefficient_delivery = round(($this->order->delivery_price * $coefficient) / 100 / $item->amount, 2);
+                $corrected_purchases[$key] += $coefficient_delivery;
 
                 if ($this->debug) {
-                    echo '$item->price: ' . $item->price . '<br>';
-                }
-
-                $item->price += $coefficient_delivery / $item->amount;
-
-                if ($this->debug) {
+                    echo '----Доставка---<br>';
                     echo '$coefficient: ' . $coefficient . '<br>';
                     echo '$coefficient_delivery: ' . $coefficient_delivery . '<br>';
-                    echo '$item->price: ' . $item->price . '<br>';
-                    echo '-------<br>';
+                    echo 'corrected price: ' . $corrected_purchases[$key] . '<br><br>';
                 }
             }
         }
 
-        /**
-         * coupon_discount - скидка по купону
-         */
-        if (!empty($this->order->coupon_discount)) {
-            foreach ($purchases as $item) {
-                // Вычислим процентное соотношение item price * amount от общей суммы заказа
-                $coefficient = round(($item->amount * $item->price) * 100 / $total_price, 2);
-                $coefficient_discount = round((($this->order->coupon_discount) * $coefficient) / 100, 2);
-                $item->price -= $coefficient_discount / $item->amount;
-            }
-        }
-
-        /**
-         * Подгоняем цены у товаров с учетом процентной скидки
-         */
-        $positions = [];
-        foreach ($purchases as $item) {
-
-            $p_discount = round($item->price * (100 - $this->order->discount) / 100, 2); // Цена товара в позиции со скидкой
-            $p_all_discount = $p_discount * $item->amount;
-            $p_all_no_discount = round($item->amount * $item->price, 2); // Цена всех товаров в позиции без скидки
-            $p_all_discount_all = round($p_all_no_discount * (100 - $this->order->discount) / 100, 2); // Цена всех товаров в позиции со скидкой
-            $difference = round($p_all_discount - $p_all_discount_all, 2); // Разница
-
-            if ($this->order->discount) {
-                $item->price *= (100 - $this->order->discount) / 100;
-            }
-
-            if ($this->debug) {
-                echo 'Общая цена позиций со скидкой: ' . $p_all_discount . '<br>';
-                echo 'Общая $p_all_discount_all: ' . $p_all_discount_all . '<br>';
-            }
-
-            /*
-             * Если есть разница, создаем клон товара в позиции
-             * и из его стоимости вычитаем разницу в товарах.
-             * Таким образом будет 2 позиции с одним товаром,
-             * но разными стоимостями.
-             */
-            if ($p_all_discount > $p_all_discount_all) {
-                // Разница БОЛЬШЕ - Вычитаем из одного товара разницу
-
-                if ($this->debug) {
-                    echo 'Разница БОЛЬШЕ: ' . $difference . '<br>';
-                }
-
-                $item_1 = clone $item;
-                $item_1->price = round($item_1->price, 2) - $difference;
-                $item_1->amount = 1;
-                $item_1->variant_id = $item_1->variant_id . '-1';
-                $positions[] = $item_1;
-
-                $item->amount -= 1;
-                $positions[] = $item;
-
-            } elseif ($p_all_discount < $p_all_discount_all) {
-                // Прибавляем к одному товару разницу
-
-                if ($this->debug) {
-                    echo 'Разница МЕНЬШЕ: ' . $difference . '<br>';
-                }
-
-                $item_1 = clone $item;
-                $item_1->price = round($item_1->price, 2) - $difference;
-                $item_1->amount = 1;
-                $item_1->variant_id = $item_1->variant_id . '-1';
-                $positions[] = $item_1;
-
-                $item->amount -= 1;
-                $positions[] = $item;
-            } else {
-
-                if ($this->debug) {
-                    echo 'Разница НЕТ: ' . $difference . '<br>';
-                }
-                $positions[] = $item;
-            }
-        }
-
-
-        $purchases = $positions;
 
         /*
          * Смотрим финальную разницу, если она есть, добавляем к последней позиции разницу.
          */
         $all_sum = 0;
         $all_sum_diff = 0;
-        foreach ($purchases as $item) {
-            $all_sum += $item->price;
+        foreach ($purchases as $key => $item) {
+            $item->price = $corrected_purchases[$key];
+            $all_sum += $item->price * $item->amount;
         }
 
         if ($this->order->total_price != $all_sum) {
@@ -349,13 +335,23 @@ class Sberbank extends Simpla
             // or `array_key_last` if php 7 >= 7.3.0
             end($purchases);
             $last_key = key($purchases);
-            $purchases[$last_key]->price += $all_sum_diff;
+
+            // Дублируем последнюю позицию в чеке, если их несколько для правильной корректировки цен
+            if ($purchases[$last_key]->amount > 1) {
+                $purchases[$last_key]->amount -= 1;
+                $copy_item = clone $purchases[$last_key];
+                $copy_item->amount = 1;
+                $copy_item->price += $all_sum_diff;
+                $purchases[] = $copy_item;
+            } else {
+                $purchases[$last_key]->price += $all_sum_diff / $purchases[$last_key]->amount;
+            }
 
             if($this->debug) {
                 echo '<h3>Корректировка сумы заказа</h3>';
                 echo '$this->order->total_price: ' . $this->order->total_price . '<br/>';
                 echo '$all_sum: ' . $all_sum . '<br/>';
-                echo 'Отличие от суммы заказа:' . $all_sum_diff . '<br/>';
+                echo 'Отличие от суммы заказа: ' . $all_sum_diff . '<br/>';
             }
         }
 
