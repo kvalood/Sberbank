@@ -40,7 +40,8 @@ if ($response['actionCode'] != 0) {
 
 // Нельзя оплатить уже оплаченный заказ  
 if ($order->paid) {
-    header('Location: ' . $simpla->config->root_url . '/order/' . $order->url);
+    header('Location: ' . $simpla->config->root_url . '/order/' . $order->url, true, 302);
+    exit();
 }
 
 // Проверяем оплаченный заказ
@@ -52,15 +53,23 @@ if ($response['amount'] != (int)$total_price || $response['amount'] <= 0) {
 // Получим данные о чеке
 $payment_details = $rbs->get_receipt_status_by_orderId($order_id_merchant);
 
-// Установим статус "оплачен"
-$simpla->orders->update_order(intval($order->id), [
+// Данные по заказу, установим на "оплачен" и заполним другие данные
+$order_update = [
     'paid' => 1,
     'payment_date' => date('Y-m-d H:i:s'),
     'payment_details' => json_encode([
         'orderId' => $payment_details['orderId'], // Номер заказа в Платежном Шлюзе
         'uuid' => $payment_details['receipt'][0]['uuid'], // Номер чека
     ])
-]);
+];
+
+// Сменим статус заказа после оплаты
+if ($settings['sbr_order_status']) {
+    $order_update['status'] = $settings['sbr_order_status'];
+}
+
+// Установим флаг "оплачен"
+$simpla->orders->update_order(intval($order->id), $order_update);
 // $simpla->orders->pay(intval($order->id)); // Должно быть так, но не работает
 
 // Спишем товары
@@ -70,6 +79,5 @@ $simpla->orders->close(intval($order->id));
 $simpla->notify->email_order_user(intval($order->id));
 $simpla->notify->email_order_admin(intval($order->id));
 
-header('Location: ' . $simpla->config->root_url . '/order/' . $order->url);
-
+header('Location: ' . $simpla->config->root_url . '/order/' . $order->url, true, 302);
 exit();

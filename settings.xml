@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module>
 	<name>
-		Сбербанк Эквайринг v1.6.2
+		Сбербанк Эквайринг v1.6.3
 	</name>
 	<settings>
 		<variable>sbr_login</variable>
@@ -222,6 +222,14 @@
             <name>иной предмет расчёта</name>
             <value>13</value>
         </options>
+    </settings>
+    <settings>
+        <variable>sbr_order_status</variable>
+        <name>После оплаты сменить статус заказа на (ID статуса)</name>
+    </settings>
+    <settings>
+        <variable>sbr_css_checkout_button</variable>
+        <name>CSS класс кнопки "перейти к оплате"</name>
     </settings>
     <settings>
         <variable>sbr_debug</variable>

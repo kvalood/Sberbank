@@ -149,7 +149,7 @@ class Sberbank extends Simpla
          */
         $result = '';
         if ($order_token AND isset($order_status['actionCode']) AND $rbs->allowed_actionCode($order_status['actionCode']) AND $order_expiration) {
-            $result = "<a href='" . $this->order->payment_details['formUrl'] . "' class='checkout_button'>" . $button_text . ' </a>';
+            $result = '<a href="' . $this->order->payment_details['formUrl'] . '" class="checkout_button ' . $this->payment_settings['sbr_css_checkout_button'] . '">' . $button_text . ' </a>';
         } elseif (!$order_token OR $order_status['errorCode']==6 OR !isset($order_status['actionCode']) OR !$rbs->allowed_actionCode($order_status['actionCode'])) {
 
             /**
@@ -188,7 +188,7 @@ class Sberbank extends Simpla
                 // Обновим payment_details в заказе
                 $this->orders->update_order($this->order->id, ['payment_details' => json_encode($this->order->payment_details)]);
 
-                $result = "<a href='" . $this->order->payment_details['formUrl'] . "' class='checkout_button'>" . $button_text . ' </a>';
+                $result = '<a href="' . $this->order->payment_details['formUrl'] . '" class="checkout_button ' . $this->payment_settings['sbr_css_checkout_button'] . '">' . $button_text . ' </a>';
             } elseif ($response == NULL) {
                 $result = '<p class="checkout_info">Невозможно подключиться к платежному шлюзу</p>';
             } else {
