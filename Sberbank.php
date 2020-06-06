@@ -212,6 +212,7 @@ class Sberbank extends Simpla
             echo '<h3>Текущий заказ в БД:</h3>';
             var_dump($this->order);
             echo '<h3>Корзина для ФЗ-54:</h3>';
+            var_dump($orderBundle);
             var_dump(json_decode($orderBundle));
             print '</pre>';
         }
@@ -255,9 +256,11 @@ class Sberbank extends Simpla
             $discount_sum = ($items_total_price * $this->order->discount) / 100;
 
             foreach ($purchases as $key => $item) {
-                $coefficient = ($item->amount * $item->price) * 100 / $items_total_price;
-                $coefficient_discount = round((($discount_sum * $coefficient) / 100) / $item->amount, 2);
-                $corrected_purchases[$key] -= $coefficient_discount;
+                $corrected_purchases[$key] -= $this->coefficient_price($item->amount, $item->price, $discount_sum, $items_total_price);
+
+                if ($this->debug) {
+                    echo 'Цена за item с учетом процентной скидки: ' . $corrected_purchases[$key] . '<br>';
+                }
             }
         }
 
@@ -268,9 +271,11 @@ class Sberbank extends Simpla
         if ($this->order->coupon_discount > 0) {
             foreach ($purchases as $key => $item) {
                 // Вычислим процентное соотношение item price * amount от общей суммы заказа
-                $coefficient = ($item->amount * $item->price) * 100 / $items_total_price;
-                $coefficient_discount = round((($this->order->coupon_discount) * $coefficient) / 100 / $item->amount, 2);
-                $corrected_purchases[$key] -= $coefficient_discount;
+                $corrected_purchases[$key] -= $this->coefficient_price($item->amount, $item->price, $this->order->coupon_discount, $items_total_price);
+
+                if ($this->debug) {
+                    echo 'Цена за item с учетом скидки по купону: ' . $corrected_purchases[$key] . '<br>';
+                }
             }
         }
 
@@ -281,9 +286,11 @@ class Sberbank extends Simpla
         */
         if ($this->payment_settings['sbr_delivery'] == 'include_item' AND !$this->order->separate_delivery) {
             foreach ($purchases as $key => $item) {
-                $coefficient = ($item->amount * $item->price) * 100 / $items_total_price;
-                $coefficient_delivery = round(($this->order->delivery_price * $coefficient) / 100 / $item->amount, 2);
-                $corrected_purchases[$key] += $coefficient_delivery;
+                $corrected_purchases[$key] += $this->coefficient_price($item->amount, $item->price, $this->order->delivery_price, $items_total_price);
+
+                if ($this->debug) {
+                    echo 'Цена за item с учетом доставки: ' . $corrected_purchases[$key] . '<br>';
+                }
             }
         }
 
@@ -298,6 +305,12 @@ class Sberbank extends Simpla
             $all_sum += $item->price * $item->amount;
         }
 
+        // Если доставка как отдельная позиция
+        if($this->payment_settings['sbr_delivery'] == 'item' && $this->order->delivery_price && $this->order->delivery_price > 0 && !$this->order->separate_delivery) {
+            $all_sum += $this->order->delivery_price;
+        }
+
+        // Корректируем
         if ($this->order->total_price != $all_sum) {
             $all_sum_diff = $this->order->total_price - $all_sum;
             $all_sum_diff = round($all_sum_diff, 2);
@@ -364,6 +377,20 @@ class Sberbank extends Simpla
     private function convert_price($price)
     {
         // return $this->money->convert($price, $this->payment_method->currency_id, false) * 100;
-        return $result = round($price, 2) * 100;
+        return round($price, 2) * 100;
+    }
+
+    /**
+     * Считаем коэффициент
+     *
+     * @param $item_amount
+     * @param $item_price
+     * @param $sum
+     * @param $items_total_price
+     * @return false|float
+     */
+    private function coefficient_price($item_amount, $item_price, $sum, $items_total_price) {
+        $coefficient = ($item_amount * $item_price) * 100 / $items_total_price;
+        return ceil(round((($sum * $coefficient) / 100) / $item_amount, 2));
     }
 }

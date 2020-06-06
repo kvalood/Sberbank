@@ -62,7 +62,6 @@
 Офф. документация:
 -
 * https://securepayments.sberbank.ru/wiki/doku.php/integration:api:rest:requests:register_cart#items
-* https://developer.sberbank.ru/doc/v1/acquiring/api-basket
 
 Тестовые карты:
 -

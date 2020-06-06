@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module>
 	<name>
-		Сбербанк Эквайринг v1.6.3
+		Сбербанк Эквайринг v 1.6.4
 	</name>
 	<settings>
 		<variable>sbr_login</variable>
